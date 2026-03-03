@@ -1,0 +1,30 @@
+{
+  "metadata": {
+    "name": "Cardiovascular Coupled Model",
+    "version": "1.0",
+    "description": "Simplified cardiovascular and baroreflex feedback model",
+    "confidence_score": 0.85
+  },
+  "variables": [
+    {"name": "P_art", "unit": "mmHg", "initial_value": 100.0, "type": "state", "description": "Arterial pressure"},
+    {"name": "P_ven", "unit": "mmHg", "initial_value": 5.0, "type": "state", "description": "Venous pressure"},
+    {"name": "V_art", "unit": "mL", "initial_value": 500.0, "type": "state", "description": "Arterial volume"},
+    {"name": "V_ven", "unit": "mL", "initial_value": 2500.0, "type": "state", "description": "Venous volume"}
+  ],
+  "parameters": [
+    {"name": "C_art", "unit": "mL/mmHg", "value": 1.5, "description": "Arterial compliance"},
+    {"name": "C_ven", "unit": "mL/mmHg", "value": 50.0, "description": "Venous compliance"},
+    {"name": "R_sys", "unit": "mmHg*s/mL", "value": 1.0, "description": "Systemic resistance"},
+    {"name": "HR", "unit": "bpm", "value": 70.0, "description": "Heart rate"},
+    {"name": "SV", "unit": "mL", "value": 70.0, "description": "Stroke volume"}
+  ],
+  "equations": [
+    {"target": "V_art", "expression": "(HR * SV / 60) - (P_art - P_ven) / R_sys"},
+    {"target": "V_ven", "expression": "(P_art - P_ven) / R_sys - (HR * SV / 60)"},
+    {"target": "P_art", "expression": "(1/C_art) * ((HR * SV / 60) - (P_art - P_ven) / R_sys)"},
+    {"target": "P_ven", "expression": "(1/C_ven) * ((P_art - P_ven) / R_sys - (HR * SV / 60))"}
+  ],
+  "events": [
+    {"name": "Hemorrhage", "condition": "t - 10.0", "action": "V_art = V_art - 100", "description": "Sudden loss of 100mL blood at t=10s"}
+  ]
+}

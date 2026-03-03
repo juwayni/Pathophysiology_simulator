@@ -1,0 +1,34 @@
+{
+  "metadata": {
+    "name": "Cardiovascular-Renal Coupled Model",
+    "version": "1.0",
+    "description": "Coupled model of hemodynamics and renal sodium/water excretion.",
+    "confidence_score": 0.9
+  },
+  "variables": [
+    {"name": "MAP", "unit": "mmHg", "initial_value": 100.0, "type": "state", "description": "Mean arterial pressure"},
+    {"name": "ECBV", "unit": "mL", "initial_value": 5000.0, "type": "state", "description": "Extracellular fluid volume"},
+    {"name": "Na_ext", "unit": "mEq", "initial_value": 700.0, "type": "state", "description": "Extracellular sodium"},
+    {"name": "U_out", "unit": "mL/min", "initial_value": 1.0, "type": "state", "description": "Urine output"},
+    {"name": "HR", "unit": "bpm", "initial_value": 72.0, "type": "state", "description": "Heart rate"}
+  ],
+  "parameters": [
+    {"name": "Na_intake", "unit": "mEq/min", "value": 0.1},
+    {"name": "H2O_intake", "unit": "mL/min", "value": 1.0},
+    {"name": "R_total", "unit": "mmHg*min/mL", "value": 0.02},
+    {"name": "C_total", "unit": "mL/mmHg", "value": 100.0},
+    {"name": "K_renal", "unit": "mL/min/mmHg", "value": 0.01, "description": "Renal pressure-diuresis slope"},
+    {"name": "K_baro", "unit": "bpm/mmHg", "value": 0.5, "description": "Baroreflex gain"}
+  ],
+  "equations": [
+    {"target": "MAP", "expression": "(ECBV / C_total) - MAP * 0.1"},
+    {"target": "ECBV", "expression": "H2O_intake - U_out"},
+    {"target": "Na_ext", "expression": "Na_intake - (Na_ext / ECBV) * U_out"},
+    {"target": "U_out", "expression": "K_renal * (MAP - 80.0)"},
+    {"target": "HR", "expression": "K_baro * (100.0 - MAP) - (HR - 72.0) * 0.1"}
+  ],
+  "events": [
+    {"name": "High Salt Intake", "condition": "t - 50.0", "action": "Na_intake = 0.5"},
+    {"name": "Hemorrhage", "condition": "t - 200.0", "action": "ECBV = ECBV - 500"}
+  ]
+}
