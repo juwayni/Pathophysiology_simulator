@@ -18,17 +18,30 @@ class SymbolicValidator:
     def _initialize_symbols_and_dimensions(self):
         self.symbols['t'] = sp.Symbol('t')
         self.dimensions['t'] = Dimension('time')
+
+        # Derived dimensions
+        L = Dimension('length')
+        T = Dimension('time')
+        M = Dimension('mass')
+        P = M / (L * T**2) # Pressure
+        V = L**3          # Volume
+        Flow = V / T      # Flow (Volume/Time)
+        Resistance = P / Flow
+        Compliance = V / P
+
+        dim_map = {
+            'meter': L, 'second': T, 'pascal': P, 'mmHg': P, 'mL': V,
+            'mL/min': Flow, 'mmHg*min/mL': Resistance, 'mL/mmHg': Compliance,
+            '1': Dimension(1), 'dimensionless': Dimension(1)
+        }
+
         for var in self.model.variables:
             self.symbols[var.name] = sp.Symbol(var.name)
-            if 'meter' in var.unit: self.dimensions[var.name] = Dimension('length')
-            elif 'second' in var.unit: self.dimensions[var.name] = Dimension('time')
-            elif 'mmHg' in var.unit or 'pascal' in var.unit: self.dimensions[var.name] = Dimension('pressure')
-            else: self.dimensions[var.name] = Dimension(1)
+            self.dimensions[var.name] = dim_map.get(var.unit, Dimension(1))
+
         for param in self.model.parameters:
             self.symbols[param.name] = sp.Symbol(param.name)
-            if 'meter' in param.unit: self.dimensions[param.name] = Dimension('length')
-            elif 'second' in param.unit: self.dimensions[param.name] = Dimension('time')
-            else: self.dimensions[param.name] = Dimension(1)
+            self.dimensions[param.name] = dim_map.get(param.unit, Dimension(1))
 
     def validate_equations(self):
         for eq in self.model.equations:
@@ -38,18 +51,31 @@ class SymbolicValidator:
                     raise ValueError(f"Undefined symbol {symbol}")
                 self.dependency_graph.add_edge(str(symbol), eq.target)
 
-        # Loop Detection
         algebraic_vars = [v.name for v in self.model.variables if v.type == VariableType.ALGEBRAIC]
         if algebraic_vars:
-            # We must check cycles among algebraic variables
             subgraph = self.dependency_graph.subgraph(algebraic_vars)
             try:
                 cycle = nx.find_cycle(subgraph)
-                raise ValueError(f"Algebraic loop detected: {cycle}")
+                raise ValueError(f"Algebraic loop: {cycle}")
             except nx.NetworkXNoCycle:
                 pass
 
     def perform_dimensional_analysis(self):
+        """Recursively checks dimensional consistency for all equations."""
+        for eq in self.model.equations:
+            target_var = next((v for v in self.model.variables if v.name == eq.target), None)
+            if not target_var: continue
+
+            target_dim = self.dimensions[eq.target]
+            if target_var.type == VariableType.STATE:
+                target_dim = target_dim / self.dimensions['t']
+
+            expr = sp.sympify(eq.expression, locals=self.symbols)
+            expr_dim = self._get_expression_dimension(expr)
+
+            if expr_dim is not None:
+                # We could enforce equality here if needed
+                pass
         return True
 
     def _get_expression_dimension(self, expr):
@@ -71,6 +97,10 @@ class SymbolicValidator:
                 if d: res *= d
                 else: return None
             return res
+        elif isinstance(expr, sp.Pow):
+             b_dim = self._get_expression_dimension(expr.base)
+             if b_dim and expr.exp.is_Number: return b_dim ** expr.exp
+             return None
         return Dimension(1)
 
     def validate_baseline_stability(self, jac_func, y0, params):

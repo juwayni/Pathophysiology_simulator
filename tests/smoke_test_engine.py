@@ -32,9 +32,8 @@ def smoke_test_engine():
     engine = Engine(model)
 
     t_span = (0, 160)
-    t_eval = np.linspace(0, 160, 161)
 
-    history = engine.run(t_span, t_eval=t_eval)
+    history = engine.run(t_span)
 
     print("Simulation complete.")
     print(f"Final state: {history.iloc[-1]}")
