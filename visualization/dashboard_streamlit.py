@@ -1,9 +1,12 @@
 import streamlit as st
 import numpy as np
 import json
+import pandas as pd
 from models.schema import ModelSchema
 from core.engine import Engine
+from core.sensitivity import SensitivityAnalysis
 from visualization.plotly_visualizer import PlotlyVisualizer
+from visualization.network_graph import NetworkGraph
 
 def main():
     st.set_page_config(page_title="Pathophysiology Simulator Dashboard", layout="wide")
@@ -32,45 +35,67 @@ def main():
         ]
     }
 
-    model_json = st.sidebar.text_area("Model JSON", json.dumps(default_model, indent=2), height=300)
+    model_json = st.sidebar.text_area("Model JSON", json.dumps(default_model, indent=2), height=200)
 
     try:
         model_dict = json.loads(model_json)
         model = ModelSchema(**model_dict)
         engine = Engine(model)
 
-        # Simulation parameters
-        st.sidebar.subheader("Simulation Parameters")
-        t_max = st.sidebar.slider("Simulation Time (days)", 10, 500, 160)
+        # Dashboard tabs
+        tab1, tab2, tab3, tab4 = st.tabs(["Simulation", "Sensitivity & Stability", "Structure", "Raw Data"])
 
-        # Parameter tuning
-        st.sidebar.subheader("Tune Parameters")
-        for param in model.parameters:
-            new_val = st.sidebar.number_input(f"{param.name} ({param.unit})", value=float(param.value))
-            engine.set_parameter(param.name, new_val)
+        with tab1:
+            st.sidebar.subheader("Simulation Parameters")
+            t_max = st.sidebar.slider("Simulation Time (days)", 10, 500, 160)
 
-        if st.sidebar.button("Run Simulation"):
-            t_span = (0, t_max)
-            t_eval = np.linspace(0, t_max, t_max + 1)
-            history = engine.run(t_span, t_eval=t_eval)
+            for param in model.parameters:
+                new_val = st.sidebar.number_input(f"{param.name} ({param.unit})", value=float(param.value), key=f"p_{param.name}")
+                engine.set_parameter(param.name, new_val)
 
-            st.header(f"Simulation Results: {model.metadata.name}")
+            if st.sidebar.button("Run Simulation"):
+                t_span = (0, t_max)
+                history = engine.run(t_span)
 
-            # Time Series
-            vars_to_plot = st.multiselect("Select Variables to Plot", [v.name for v in model.variables], default=[v.name for v in model.variables])
-            fig = PlotlyVisualizer.plot_time_series(history, vars_to_plot)
-            st.plotly_chart(fig, use_container_width=True)
+                st.header(f"Simulation Results: {model.metadata.name}")
+                vars_to_plot = st.multiselect("Plot Variables", [v.name for v in model.variables], default=[v.name for v in model.variables])
+                fig = PlotlyVisualizer.plot_time_series(history, vars_to_plot)
+                st.plotly_chart(fig, use_container_width=True)
 
-            # Phase Space
-            col1, col2 = st.columns(2)
-            with col1:
-                x_var = st.selectbox("X-axis", [v.name for v in model.variables], index=0)
-                y_var = st.selectbox("Y-axis", [v.name for v in model.variables], index=1)
-                fig_phase = PlotlyVisualizer.plot_phase_space(history, x_var, y_var)
-                st.plotly_chart(fig_phase, use_container_width=True)
-            with col2:
-                st.subheader("Final State")
-                st.table(history.iloc[-1])
+                st.session_state['history'] = history
+                st.session_state['engine'] = engine
+
+        with tab2:
+            if 'engine' in st.session_state:
+                st.header("Sensitivity & Stability Analysis")
+                sa = SensitivityAnalysis(st.session_state['engine'])
+                t_sa = st.number_input("Analysis Time", value=0.0)
+
+                # Stability
+                eig, stable = sa.analyze_stability(t_sa)
+                st.subheader(f"System Stability at t={t_sa}")
+                st.write(f"Is Locally Stable: {'Yes' if stable else 'No'}")
+                st.write(f"Eigenvalues: {eig}")
+
+                # Sensitivity
+                sens = sa.compute_local_sensitivity(t_sa)
+                st.subheader("Local Parameter Sensitivity")
+                sens_df = pd.DataFrame(sens,
+                                       index=[v.name for v in model.variables if v.type == 'state'],
+                                       columns=[p.name for p in model.parameters])
+                st.table(sens_df)
+            else:
+                st.info("Run simulation first.")
+
+        with tab3:
+            st.header("Dependency Graph")
+            ng = NetworkGraph(engine.validator.get_dependency_graph())
+            fig_graph = ng.plot_interactive_graph()
+            st.plotly_chart(fig_graph, use_container_width=True)
+
+        with tab4:
+            if 'history' in st.session_state:
+                st.dataframe(st.session_state['history'])
 
     except Exception as e:
         st.error(f"Error: {e}")

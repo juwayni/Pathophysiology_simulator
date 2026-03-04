@@ -15,7 +15,6 @@ class Engine:
         self.state_vector = StateVector(model)
         self.parameters = Parameters(model)
 
-        # Validation and Compilation
         self.validator = SymbolicValidator(model)
         self.validator.validate_equations()
         self.validator.perform_dimensional_analysis()
@@ -25,9 +24,7 @@ class Engine:
         self.rhs = self.compiler.compile_rhs()
         self.jac = self.compiler.compile_jacobian()
 
-        # Solver with sparsity support
         self.solver = Solver(self.rhs, self.jac, jac_sparsity=self.jac_sparsity)
-
         self.event_manager = EventManager(model, self.state_vector, self.parameters)
         self.history = None
 
@@ -44,19 +41,29 @@ class Engine:
         max_iter = 100
         iters = 0
 
+        all_times.append(current_t)
+        all_states.append(y_current.copy())
+
         while current_t < t_end and iters < max_iter:
             iters += 1
             event_roots = self.event_manager.get_event_roots()
 
+            # If no events, just solve to the end
             sol = self.solver.solve(
                 y_current,
                 (current_t, t_end),
                 params_current,
-                events=event_roots
+                events=event_roots if event_roots else None
             )
 
-            all_times.extend(sol.t)
-            all_states.extend(sol.y.T)
+            if len(sol.t) > 1:
+                # Add all points except the first one if it's already recorded
+                start_idx = 1 if sol.t[0] == all_times[-1] else 0
+                all_times.extend(sol.t[start_idx:])
+                all_states.extend(sol.y[:, start_idx:].T)
+            elif len(sol.t) == 1 and sol.t[0] > all_times[-1]:
+                all_times.extend(sol.t)
+                all_states.extend(sol.y.T)
 
             current_t = sol.t[-1]
             y_current = sol.y[:, -1]
@@ -75,6 +82,11 @@ class Engine:
                     )
                     self.state_vector.update_from_vector(y_current)
                     self.parameters.update_from_vector(params_current)
+
+                    all_times.append(current_t)
+                    all_states.append(y_current.copy())
+
+                    # Nudge to prevent infinite event loop
                     current_t += 1e-9
             else:
                 break
@@ -82,7 +94,6 @@ class Engine:
         col_names = [v.name for v in self.state_vector.state_vars]
         df = pd.DataFrame(all_states, columns=col_names)
         df.insert(0, 't', all_times)
-        df = df.drop_duplicates(subset=['t'], keep='last')
         self.history = df
         return df
 

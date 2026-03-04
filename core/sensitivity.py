@@ -34,13 +34,28 @@ class SensitivityAnalysis:
         y = self.engine.state_vector.get_vector()
         params = self.engine.parameters.get_vector()
 
-        # Compute Jacobian at current state
         J = self.engine.jac(t, y, params)
-
-        # Eigenvalues
         eigenvalues = scipy.linalg.eigvals(J)
-
-        # If all real parts < 0, stable
         is_stable = np.all(np.real(eigenvalues) < 0)
-
         return eigenvalues, is_stable
+
+    def scan_bifurcation(self, param_name: str, p_range: Tuple[float, float], n_steps: int = 50) -> List[Dict]:
+        """Performs a basic bifurcation scan by tracking steady-state or eigenvalues over a parameter range."""
+        p_vals = np.linspace(p_range[0], p_range[1], n_steps)
+        original_val = self.engine.parameters.get_value(param_name)
+
+        results = []
+        for p in p_vals:
+            self.engine.set_parameter(param_name, p)
+            # Re-compile JIT if parameters are baked in (our JIT takes params as array, so no need)
+            # Check stability at a reference point (e.g. t=0, y=initial)
+            eig, stable = self.analyze_stability(0.0)
+            results.append({
+                'param_value': p,
+                'eigenvalues': eig,
+                'is_stable': stable
+            })
+
+        # Restore parameter
+        self.engine.set_parameter(param_name, original_val)
+        return results

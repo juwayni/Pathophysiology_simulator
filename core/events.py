@@ -13,30 +13,29 @@ class EventManager:
         self._compile_events()
 
     def _compile_events(self):
-        # Create symbols for all state variables and parameters
         state_vars = [v.name for v in self.model.variables if v.type == VariableType.STATE]
         param_vars = [p.name for p in self.model.parameters]
         all_symbols = {name: sp.Symbol(name) for name in state_vars + param_vars}
         all_symbols['t'] = sp.Symbol('t')
 
         for event in self.events:
-            # Condition: a function that returns 0 when the condition is met (event root finding)
+            # Condition: a function that returns 0 when the condition is met
             cond_expr = sp.sympify(event.condition, locals=all_symbols)
             cond_func = sp.lambdify((all_symbols['t'], [all_symbols[v] for v in state_vars], [all_symbols[p] for p in param_vars]), cond_expr, modules='numpy')
 
-            # Action: a function that applies a change to the state or parameters
-            action_parts = event.action.split('=')
-            target_var = action_parts[0].strip()
-            action_expr = sp.sympify(action_parts[1].strip(), locals=all_symbols)
-            action_func = sp.lambdify((all_symbols['t'], [all_symbols[v] for v in state_vars], [all_symbols[p] for p in param_vars]), action_expr, modules='numpy')
-
-            # Create the event_root function with a way to access current parameters
-            # Since solve_ivp doesn't pass params to events, we'll store them in self.parameters
-            # and access them in the event_root.
+            # Action: assignments like "beta = 0.05"
+            # Split assignment into target and expression
+            try:
+                action_parts = event.action.split('=')
+                target_name = action_parts[0].strip()
+                action_expr_str = action_parts[1].strip()
+                action_expr = sp.sympify(action_expr_str, locals=all_symbols)
+                action_func = sp.lambdify((all_symbols['t'], [all_symbols[v] for v in state_vars], [all_symbols[p] for p in param_vars]), action_expr, modules='numpy')
+            except Exception as e:
+                 raise ValueError(f"Invalid event action {event.action}: {e}")
 
             def make_event_root(c_func, mgr):
                 def event_root(t, y):
-                    # Always get the latest parameters from the manager
                     params_vec = mgr.parameters.get_vector()
                     return c_func(t, y, params_vec)
                 return event_root
@@ -48,7 +47,7 @@ class EventManager:
             self.compiled_events.append({
                 'name': event.name,
                 'root': root_func,
-                'target': target_var,
+                'target': target_name,
                 'action_func': action_func
             })
 
@@ -63,7 +62,6 @@ class EventManager:
         new_y = y.copy()
         new_params = params.copy()
 
-        # Check if it's a state variable or parameter
         if target in self.state_vector.name_to_idx:
             new_y[self.state_vector.name_to_idx[target]] = new_val
         elif target in self.parameters.name_to_idx:
