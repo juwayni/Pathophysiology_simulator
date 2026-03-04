@@ -1,31 +1,29 @@
 # Pathophysiology Simulator Architecture
 
-## Overview
-The Pathophysiology Simulator is a modular, high-performance, and extensible platform for simulating human physiology and pathology using dynamical systems modeling.
+## System Overview
+The Pathophysiology Simulator is a high-performance, modular platform designed for the simulation of complex human physiological and pathological systems. It utilizes a state-of-the-art symbolic compilation pipeline and adaptive numerical solvers to handle stiff ODE systems with thousands of variables.
 
-## Core Components
+## Core Modules
 
-1.  **Model Schema (`models/schema.py`)**: Defines the simulation model structure (variables, parameters, equations, units) using Pydantic.
-2.  **Symbolic Compiler (`compiler/`)**:
-    -   `parser.py`: Loads and validates model JSON.
-    -   `symbolic_validator.py`: Uses SymPy for equation validation, dimensional analysis, and Jacobian sparsity pattern detection.
-    -   `jit_compiler.py`: Compiles symbolic equations into high-performance RHS and Jacobian functions using **Numba JIT**.
-3.  **Core Engine (`core/`)**:
-    -   `state_vector.py`: Efficient memory management of simulation state.
-    -   `parameters.py`: Parameter storage and update logic.
-    -   `solver.py`: Wrapper for SciPy `solve_ivp` supporting BDF/LSODA.
-    -   `engine.py`: Orchestrates the simulation process, including a robust **Event Handling** loop.
-    -   `events.py`: Implements a root-finding based event system for instantaneous state jumps and parameter changes.
-    -   `sensitivity.py`: Finite difference sensitivity analysis and stability analysis.
-4.  **Visualization (`visualization/`)**:
-    -   `plotly_visualizer.py`: Interactive scientific plots.
-    -   `network_graph.py`: Dependency visualization using NetworkX.
-    -   `dashboard_streamlit.py`: Interactive research dashboard.
-    -   `plotnine_publication.py`: Publication-ready plots using ggplot2-like syntax.
-    -   `manim_animator.py`: Mathematical animations using Manim.
+### 1. Model Data Layer (`models/`)
+-   **Schema**: Pydantic-based validation of variables, parameters, and equations.
+-   **Specification**: AI-compatible JSON format for defining physiological compartments.
 
-## Design Principles
--   Strict separation between model data, mathematical compilation, and solver backend.
--   Variable-centric dynamical architecture.
--   Support for large-scale stiff ODE systems through JIT and sparsity.
--   AI-compatible JSON model schemas.
+### 2. Symbolic Compiler (`compiler/`)
+-   **Symbolic Validator**: Uses SymPy for recursive dimensional analysis and NetworkX for detecting algebraic loops in the model dependency graph.
+-   **JIT Compiler**: Transforms symbolic SymPy expressions into optimized Python code strings, which are then JIT-compiled using **Numba** for near-native execution speed.
+
+### 3. Numerical Engine (`core/`)
+-   **State Vector**: Contiguous NumPy array management with O(1) named indexing.
+-   **Adaptive Solver**: SciPy-based `solve_ivp` supporting **BDF** and **LSODA** methods with sparse Jacobian utilization for high-dimensional efficiency.
+-   **EventManager**: A sophisticated root-finding loop that detects physiological triggers, applies instantaneous state/parameter jumps, and restarts the solver to maintain numerical integrity.
+
+### 4. Advanced Analytics (`core/`)
+-   **SensitivityAnalysis**: Computes normalized finite-difference sensitivities and ranks parameters by influence.
+-   **SteadyStateFinder**: Identifies system equilibria using non-linear root-finding.
+-   **Bifurcation Module**: Scans parameter spaces to track fixed points and eigenvalue stability.
+
+### 5. Visualization Suite (`visualization/`)
+-   **Streamlit Dashboard**: Real-time research interface for parameter tuning and comparative analysis.
+-   **Plotly/Plotnine**: Publication-quality static and interactive graphics.
+-   **Manim Animator**: Automated mathematical animations of model topology and feedback loops.

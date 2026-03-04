@@ -1,0 +1,36 @@
+{
+  "metadata": {
+    "name": "Hemorrhagic Shock & Compensation Model",
+    "version": "1.0",
+    "description": "Multi-organ model of circulatory shock featuring Baroreflex compensation and renal failure.",
+    "confidence_score": 0.99
+  },
+  "variables": [
+    {"name": "P_art", "unit": "mmHg", "initial_value": 100.0, "type": "state", "description": "Arterial pressure"},
+    {"name": "P_ven", "unit": "mmHg", "initial_value": 5.0, "type": "state", "description": "Venous pressure"},
+    {"name": "V_total", "unit": "mL", "initial_value": 5000.0, "type": "state", "description": "Total blood volume"},
+    {"name": "SNS", "unit": "1", "initial_value": 1.0, "type": "state", "description": "Sympathetic activity (1.0 = normal)"},
+    {"name": "U_out", "unit": "mL/min", "initial_value": 1.0, "type": "state", "description": "Urine output"},
+    {"name": "R_sys", "unit": "mmHg*min/mL", "initial_value": 0.02, "type": "state", "description": "Systemic vascular resistance"}
+  ],
+  "parameters": [
+    {"name": "C_art", "unit": "mL/mmHg", "value": 1.5},
+    {"name": "C_ven", "unit": "mL/mmHg", "value": 100.0},
+    {"name": "K_baro", "unit": "1/mmHg", "value": 0.1, "description": "Baroreflex gain"},
+    {"name": "R_base", "unit": "mmHg*min/mL", "value": 0.02},
+    {"name": "V_target", "unit": "mL", "value": 5000.0},
+    {"name": "K_renal", "unit": "mL/min/mmHg", "value": 0.05}
+  ],
+  "equations": [
+    {"target": "P_art", "expression": "(1/C_art) * ( (SNS*5.0) - (P_art - P_ven)/R_sys )"},
+    {"target": "P_ven", "expression": "(1/C_ven) * ( (P_art - P_ven)/R_sys - (SNS*5.0) )"},
+    {"target": "V_total", "expression": "1.0 - U_out"},
+    {"target": "SNS", "expression": "K_baro * (100.0 - P_art) - (SNS - 1.0) * 0.5"},
+    {"target": "U_out", "expression": "K_renal * (P_art - 60.0)"},
+    {"target": "R_sys", "expression": "0.1 * (SNS - 1.0) - (R_sys - R_base) * 0.2"}
+  ],
+  "events": [
+    {"name": "Massive Hemorrhage", "condition": "t - 10.0", "action": "V_total = V_total - 2000.0", "description": "Acute loss of 40% blood volume"},
+    {"name": "Vasopressor Infusion", "condition": "t - 100.0", "action": "R_base = 0.05", "description": "Pharmacological support"}
+  ]
+}

@@ -1,32 +1,30 @@
 # API Reference
 
-## Model Schema (`models/schema.py`)
--   `ModelSchema`: Pydantic model for overall simulation state and equations.
--   `VariableSchema`: Pydantic model for state variables.
--   `ParameterSchema`: Pydantic model for constant parameters.
--   `EquationSchema`: Pydantic model for derivative equations.
+## Core Engine
+### `Engine(model: ModelSchema)`
+The primary orchestrator for physiological simulations.
+-   `run(t_span: Tuple[float, float]) -> pd.DataFrame`: Executes the simulation with full event handling.
+-   `set_parameter(name: str, value: float)`: Updates a model parameter on-the-fly.
 
-## Engine (`core/engine.py`)
--   `Engine(model: ModelSchema)`: Orchestrates the simulation process.
-    -   `run(t_span, t_eval=None)`: Runs the simulation and returns a Pandas DataFrame.
-    -   `set_parameter(name, value)`: Modifies a parameter value.
-    -   `get_history()`: Returns the simulation result DataFrame.
+## Symbolic Compiler
+### `SymbolicValidator(model: ModelSchema)`
+Validates model integrity.
+-   `validate_equations()`: Checks for undefined symbols and algebraic loops.
+-   `perform_dimensional_analysis()`: Recursively verifies dimensional consistency.
+-   `get_sparsity_pattern()`: Generates CSR matrix for the sparse Jacobian.
 
-## Solver (`core/solver.py`)
--   `Solver(rhs, jac=None, method='BDF')`: Wrapper for SciPy `solve_ivp`.
-    -   `solve(y0, t_span, params, t_eval=None, events=None)`: Solves the ODE system.
+### `JITCompiler(model: ModelSchema)`
+Compiles equations to machine code.
+-   `compile_rhs()`: Generates Numba-jitted derivative function.
+-   `compile_jacobian()`: Generates Numba-jitted Jacobian matrix.
 
-## JIT Compiler (`compiler/jit_compiler.py`)
--   `JITCompiler(model: ModelSchema)`: Compiles symbolic equations into RHS and Jacobian.
-    -   `compile_rhs()`: Returns a callable for the RHS function.
-    -   `compile_jacobian()`: Returns a callable for the Jacobian matrix.
+## Analytics
+### `SensitivityAnalysis(engine: Engine)`
+Tools for system interrogation.
+-   `get_sensitivity_ranking(t: float) -> pd.DataFrame`: Ranks parameters by normalized influence.
+-   `analyze_stability(t: float) -> Tuple[np.ndarray, bool]`: Computes eigenvalues of the Jacobian.
+-   `scan_bifurcation(param, range, steps) -> List[Dict]`: Performs 1D continuation and stability tracking.
 
-## Symbolic Validator (`compiler/symbolic_validator.py`)
--   `SymbolicValidator(model: ModelSchema)`: Validates equations for errors and loops.
-    -   `validate_equations()`: Checks for undefined variables and algebraic loops.
-    -   `get_dependency_graph()`: Returns a NetworkX DiGraph of variable dependencies.
-
-## Sensitivity Analysis (`core/sensitivity.py`)
--   `SensitivityAnalysis(engine)`: Analyzes local parameter sensitivity and stability.
-    -   `compute_local_sensitivity(t, delta=1e-6)`: Computes sensitivity matrix.
-    -   `analyze_stability(t)`: Computes eigenvalues of the Jacobian.
+## Model Data
+### `ModelSchema`
+Pydantic model defining variables, parameters, equations, and events.

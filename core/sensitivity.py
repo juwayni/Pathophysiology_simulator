@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.linalg
+import pandas as pd
 from typing import Callable, List, Dict, Optional, Tuple
 from core.engine import Engine
 from core.steady_state import SteadyStateFinder
@@ -25,13 +26,37 @@ class SensitivityAnalysis:
             sensitivity_matrix[:, i] = (dy_pert - dy_base) / delta
         return sensitivity_matrix
 
+    def get_sensitivity_ranking(self, t: float) -> pd.DataFrame:
+        """Computes normalized sensitivity and ranks parameters by their influence on the state."""
+        sens = self.compute_local_sensitivity(t)
+        params = self.engine.parameters.get_vector()
+        y = self.engine.state_vector.get_vector()
+
+        # Normalize: (dy/dp) * (p/y)
+        normalized_sens = np.zeros_like(sens)
+        for i in range(sens.shape[0]): # states
+            for j in range(sens.shape[1]): # params
+                if abs(y[i]) > 1e-9:
+                    normalized_sens[i, j] = sens[i, j] * (params[j] / y[i])
+                else:
+                    normalized_sens[i, j] = sens[i, j] * params[j]
+
+        # Sum of absolute normalized sensitivities across all states
+        total_influence = np.sum(np.abs(normalized_sens), axis=0)
+
+        ranking = pd.DataFrame({
+            'parameter': [p.name for p in self.engine.model.parameters],
+            'influence': total_influence
+        }).sort_values('influence', ascending=False)
+
+        return ranking
+
     def analyze_stability(self, t: float, y: Optional[np.ndarray] = None) -> Tuple[np.ndarray, bool]:
         if y is None:
             y = self.engine.state_vector.get_vector()
         params = self.engine.parameters.get_vector()
         J = self.engine.jac(t, y, params)
         eigenvalues = scipy.linalg.eigvals(J)
-        # For a stable equilibrium, real parts must be negative.
         is_stable = np.all(np.real(eigenvalues) < 0)
         return eigenvalues, is_stable
 
