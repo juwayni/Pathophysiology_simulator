@@ -5,35 +5,20 @@ import pandas as pd
 from models.schema import ModelSchema
 from core.engine import Engine
 from core.sensitivity import SensitivityAnalysis
+from core.steady_state import SteadyStateFinder
 from visualization.plotly_visualizer import PlotlyVisualizer
 from visualization.network_graph import NetworkGraph
 
 def main():
     st.set_page_config(page_title="Pathophysiology Simulator Dashboard", layout="wide")
-    st.title("Human Physiology and Pathology Simulator")
+    st.title("Human Physiology and Pathology Simulator - Research Dashboard")
 
     # Model Loading
     st.sidebar.header("Model Configuration")
 
-    # Default SIR model
-    default_model = {
-        "metadata": {"name": "SIR Model", "version": "1.0"},
-        "variables": [
-            {"name": "S", "unit": "people", "initial_value": 999.0, "type": "state"},
-            {"name": "I", "unit": "people", "initial_value": 1.0, "type": "state"},
-            {"name": "R", "unit": "people", "initial_value": 0.0, "type": "state"}
-        ],
-        "parameters": [
-            {"name": "beta", "unit": "1/day", "value": 0.3},
-            {"name": "gamma", "unit": "1/day", "value": 0.1},
-            {"name": "N", "unit": "people", "value": 1000.0}
-        ],
-        "equations": [
-            {"target": "S", "expression": "-beta * S * I / N"},
-            {"target": "I", "expression": "beta * S * I / N - gamma * I"},
-            {"target": "R", "expression": "gamma * I"}
-        ]
-    }
+    # Load default complex model
+    with open('models/example_multi_organ.json', 'r') as f:
+        default_model = json.load(f)
 
     model_json = st.sidebar.text_area("Model JSON", json.dumps(default_model, indent=2), height=200)
 
@@ -42,58 +27,68 @@ def main():
         model = ModelSchema(**model_dict)
         engine = Engine(model)
 
-        # Dashboard tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["Simulation", "Sensitivity & Stability", "Structure", "Raw Data"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Simulation", "Bifurcation", "Sensitivity & Stability", "Structure", "Raw Data"])
 
         with tab1:
             st.sidebar.subheader("Simulation Parameters")
-            t_max = st.sidebar.slider("Simulation Time (days)", 10, 500, 160)
+            t_max = st.sidebar.slider("Simulation Time", 10, 2000, 1000)
 
             for param in model.parameters:
-                new_val = st.sidebar.number_input(f"{param.name} ({param.unit})", value=float(param.value), key=f"p_{param.name}")
+                new_val = st.sidebar.number_input(f"{param.name}", value=float(param.value), key=f"p_{param.name}")
                 engine.set_parameter(param.name, new_val)
 
             if st.sidebar.button("Run Simulation"):
-                t_span = (0, t_max)
-                history = engine.run(t_span)
-
-                st.header(f"Simulation Results: {model.metadata.name}")
-                vars_to_plot = st.multiselect("Plot Variables", [v.name for v in model.variables], default=[v.name for v in model.variables])
-                fig = PlotlyVisualizer.plot_time_series(history, vars_to_plot)
-                st.plotly_chart(fig, use_container_width=True)
-
+                history = engine.run((0, t_max))
                 st.session_state['history'] = history
                 st.session_state['engine'] = engine
 
+            if 'history' in st.session_state:
+                history = st.session_state['history']
+                st.header("Time-Series Results")
+                vars_to_plot = st.multiselect("Select Variables", history.columns[1:], default=history.columns[1:4])
+                st.plotly_chart(PlotlyVisualizer.plot_time_series(history, vars_to_plot), use_container_width=True)
+
+                st.header("Phase Space Portrait")
+                col1, col2 = st.columns(2)
+                with col1:
+                    x_axis = st.selectbox("X-axis", history.columns[1:], index=0)
+                with col2:
+                    y_axis = st.selectbox("Y-axis", history.columns[1:], index=1)
+                st.plotly_chart(PlotlyVisualizer.plot_phase_space(history, x_axis, y_axis), use_container_width=True)
+
         with tab2:
             if 'engine' in st.session_state:
-                st.header("Sensitivity & Stability Analysis")
+                st.header("Bifurcation Scan")
                 sa = SensitivityAnalysis(st.session_state['engine'])
-                t_sa = st.number_input("Analysis Time", value=0.0)
+                bif_param = st.selectbox("Bifurcation Parameter", [p.name for p in model.parameters])
+                p_min = st.number_input("Min Value", value=0.0)
+                p_max = st.number_input("Max Value", value=2.0)
 
-                # Stability
-                eig, stable = sa.analyze_stability(t_sa)
-                st.subheader(f"System Stability at t={t_sa}")
-                st.write(f"Is Locally Stable: {'Yes' if stable else 'No'}")
-                st.write(f"Eigenvalues: {eig}")
-
-                # Sensitivity
-                sens = sa.compute_local_sensitivity(t_sa)
-                st.subheader("Local Parameter Sensitivity")
-                sens_df = pd.DataFrame(sens,
-                                       index=[v.name for v in model.variables if v.type == 'state'],
-                                       columns=[p.name for p in model.parameters])
-                st.table(sens_df)
-            else:
-                st.info("Run simulation first.")
+                if st.button("Run Scan"):
+                    results = sa.scan_bifurcation(bif_param, (p_min, p_max), n_steps=20)
+                    bif_df = pd.DataFrame([{
+                        'param': r['param_value'],
+                        'max_eig': np.max(np.real(r['eigenvalues'])),
+                        'is_stable': r['is_stable']
+                    } for r in results])
+                    st.line_chart(bif_df.set_index('param')['max_eig'])
+                    st.write("Stability Map (Red = Unstable, Blue = Stable)")
+                    # Placeholder for stability plot
 
         with tab3:
-            st.header("Dependency Graph")
-            ng = NetworkGraph(engine.validator.get_dependency_graph())
-            fig_graph = ng.plot_interactive_graph()
-            st.plotly_chart(fig_graph, use_container_width=True)
+            if 'engine' in st.session_state:
+                st.header("Local Stability & Sensitivity")
+                sa = SensitivityAnalysis(st.session_state['engine'])
+                t_sa = st.number_input("Analysis Timepoint", value=0.0)
+                eig, stable = sa.analyze_stability(t_sa)
+                st.write(f"Stable: {stable}, Eigenvalues: {eig}")
 
         with tab4:
+            st.header("Dependency Network")
+            ng = NetworkGraph(engine.validator.get_dependency_graph())
+            st.plotly_chart(ng.plot_interactive_graph(), use_container_width=True)
+
+        with tab5:
             if 'history' in st.session_state:
                 st.dataframe(st.session_state['history'])
 

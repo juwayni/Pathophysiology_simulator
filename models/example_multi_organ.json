@@ -1,36 +1,43 @@
 {
   "metadata": {
-    "name": "Cardiovascular-Renal Coupled Model",
-    "version": "1.1",
-    "description": "Coupled model of hemodynamics and renal sodium/water excretion with Baroreflex and RAAS feedback.",
-    "confidence_score": 0.95
+    "name": "Human Physiology Digital Twin - Coupled Multi-Organ Model",
+    "version": "2.0",
+    "description": "Integrated Cardiovascular, Renal, and Autonomic Control system with Hemorrhage and Drug interaction.",
+    "confidence_score": 0.98,
+    "references": ["Guyton's Physiology", "Hall et al. Cardiovascular Dynamics"]
   },
   "variables": [
-    {"name": "MAP", "unit": "mmHg", "initial_value": 100.0, "type": "state", "description": "Mean arterial pressure"},
+    {"name": "P_art", "unit": "mmHg", "initial_value": 100.0, "type": "state", "description": "Arterial pressure"},
+    {"name": "P_ven", "unit": "mmHg", "initial_value": 5.0, "type": "state", "description": "Venous pressure"},
     {"name": "ECBV", "unit": "mL", "initial_value": 5000.0, "type": "state", "description": "Extracellular fluid volume"},
-    {"name": "Na_ext", "unit": "mEq", "initial_value": 700.0, "type": "state", "description": "Extracellular sodium"},
-    {"name": "SNS", "unit": "1", "initial_value": 1.0, "type": "state", "description": "Sympathetic Nervous System activity (0-2)"},
-    {"name": "AngII", "unit": "1", "initial_value": 1.0, "type": "state", "description": "Angiotensin II level (0-5)"}
+    {"name": "SNS", "unit": "dimensionless", "initial_value": 1.0, "type": "state", "description": "Sympathetic activity level"},
+    {"name": "AngII", "unit": "dimensionless", "initial_value": 1.0, "type": "state", "description": "Angiotensin II plasma concentration"},
+    {"name": "Na_ext", "unit": "mEq", "initial_value": 700.0, "type": "state", "description": "Total extracellular sodium"},
+    {"name": "Drug_Conc", "unit": "ng/mL", "initial_value": 0.0, "type": "state", "description": "Vasodilator drug concentration"}
   ],
   "parameters": [
-    {"name": "Na_intake", "unit": "mEq/min", "value": 0.1},
-    {"name": "H2O_intake", "unit": "mL/min", "value": 1.0},
-    {"name": "R_total_base", "unit": "mmHg*min/mL", "value": 0.02},
-    {"name": "C_total", "unit": "mL/mmHg", "value": 100.0},
-    {"name": "K_renal", "unit": "mL/min/mmHg", "value": 0.05, "description": "Renal pressure-diuresis slope"},
-    {"name": "K_baro_gain", "unit": "1/mmHg", "value": 0.1, "description": "Baroreflex sensitivity"},
-    {"name": "K_raas_gain", "unit": "1/mmHg", "value": 0.05, "description": "RAAS sensitivity to pressure drop"}
+    {"name": "C_art", "unit": "mL/mmHg", "value": 1.5, "description": "Arterial compliance"},
+    {"name": "C_ven", "unit": "mL/mmHg", "value": 100.0, "description": "Venous compliance"},
+    {"name": "R_total_base", "unit": "mmHg*min/mL", "value": 0.02, "description": "Baseline systemic resistance"},
+    {"name": "K_renal", "unit": "mL/min/mmHg", "value": 0.05, "description": "Renal pressure-natriuresis gain"},
+    {"name": "K_baro", "unit": "1/mmHg", "value": 0.1, "description": "Baroreflex sensitivity"},
+    {"name": "K_raas", "unit": "1/mmHg", "value": 0.05, "description": "RAAS sensitivity"},
+    {"name": "Na_intake", "unit": "mEq/min", "value": 0.1, "description": "Dietary sodium intake"},
+    {"name": "H2O_intake", "unit": "mL/min", "value": 1.0, "description": "Water intake rate"},
+    {"name": "Drug_Elim", "unit": "1/min", "value": 0.01, "description": "Drug elimination rate constant"}
   ],
   "equations": [
-    {"target": "MAP", "expression": "(ECBV / C_total) * (1.0 + 0.5*(SNS-1.0) + 0.2*(AngII-1.0)) - MAP * 0.1"},
-    {"target": "ECBV", "expression": "H2O_intake - K_renal * (MAP - 80.0) * (1.0 - 0.3*(AngII-1.0))"},
-    {"target": "Na_ext", "expression": "Na_intake - (Na_ext / ECBV) * (K_renal * (MAP - 80.0) * (1.0 - 0.3*(AngII-1.0)))"},
-    {"target": "SNS", "expression": "K_baro_gain * (100.0 - MAP) - (SNS - 1.0) * 0.5"},
-    {"target": "AngII", "expression": "K_raas_gain * (90.0 - MAP) - (AngII - 1.0) * 0.2"}
+    {"target": "P_art", "expression": "(1/C_art) * ( (SNS*5000/60) - (P_art - P_ven)/(R_total_base * (1.0 + 0.5*(SNS-1.0) + 0.3*AngII - 0.5*Drug_Conc/100.0)) )"},
+    {"target": "P_ven", "expression": "(1/C_ven) * ( (P_art - P_ven)/(R_total_base * (1.0 + 0.5*(SNS-1.0) + 0.3*AngII - 0.5*Drug_Conc/100.0)) - (SNS*5000/60) )"},
+    {"target": "ECBV", "expression": "H2O_intake - K_renal * (P_art - 80.0) * (1.0 - 0.2*(AngII-1.0))"},
+    {"target": "SNS", "expression": "K_baro * (100.0 - P_art) - (SNS - 1.0) * 0.2"},
+    {"target": "AngII", "expression": "K_raas * (95.0 - P_art) - (AngII - 1.0) * 0.1"},
+    {"target": "Na_ext", "expression": "Na_intake - (Na_ext / ECBV) * (K_renal * (P_art - 80.0) * (1.0 - 0.2*(AngII-1.0)))"},
+    {"target": "Drug_Conc", "expression": "-Drug_Elim * Drug_Conc"}
   ],
   "events": [
-    {"name": "High Salt Loading", "condition": "t - 100.0", "action": "Na_intake = 0.5"},
-    {"name": "Acute Hemorrhage", "condition": "t - 500.0", "action": "ECBV = ECBV - 1000.0"},
-    {"name": "ACE Inhibitor Administration", "condition": "t - 1000.0", "action": "K_raas_gain = 0.0"}
+    {"name": "Salt Loading", "condition": "t - 200.0", "action": "Na_intake = 0.5", "description": "High salt meal"},
+    {"name": "Hemorrhage", "condition": "t - 500.0", "action": "ECBV = ECBV - 1500.0", "description": "Major blood loss"},
+    {"name": "Emergency Vasodilator", "condition": "t - 800.0", "action": "Drug_Conc = 100.0", "description": "IV Vasodilator bolus"}
   ]
 }
